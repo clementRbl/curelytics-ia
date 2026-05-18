@@ -9,6 +9,9 @@ data/
 outputs/*.npy
 outputs/*.png
 
+# Support de présentation (local uniquement)
+presentation/
+
 # Metadata CSV peut être commitée (légère)
 
 .DS_Store
