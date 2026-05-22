@@ -8,10 +8,10 @@ Détection automatisée de tumeurs cérébrales sur IRM, en exploitant un grand 
 
 ## 📋 Contexte
 
-CurelyticsIA, startup en e-santé, souhaite automatiser la détection de tumeurs cérébrales sur IRM. Le dataset comporte :
+CurelyticsIA, startup en e-santé, souhaite automatiser la détection de tumeurs cérébrales sur IRM. Le dataset brut comporte 1 506 images (100 labellisées + 1 406 non labellisées). Après **déduplication** (cf. plus bas), il reste :
 
-- **100 images fortement labellisées** (50 cancer / 50 normal) — annotées par des radiologues experts
-- **1 406 images non labellisées** — abondantes mais sans annotation
+- **99 images fortement labellisées** (50 cancer / 49 normal) — annotées par des radiologues experts
+- **1 311 images non labellisées** — abondantes mais sans annotation
 
 Annoter manuellement coûte cher (budget de 300 €, insuffisant). L'objectif est donc d'exploiter au maximum les données non labellisées via le **semi-supervisé**, et d'évaluer la faisabilité d'un passage à l'échelle (4M images, budget 5 000 €).
 
@@ -109,39 +109,51 @@ conda run -n brainscanai jupyter lab
 
 ---
 
+## 🧹 Déduplication (étape critique anti-fuite)
+
+Un audit MD5 du dataset brut a révélé **96 doublons**, dont **32 images labellisées également présentes dans le dossier non labellisé**. Sans correction, ces copies pouvaient faire fuiter des images de test dans l'entraînement et gonfler les scores.
+
+Une étape de déduplication par hash MD5 (Notebook 1) retire ces doublons : **1 506 → 1 410 images** (99 labellisées + 1 311 non labellisées). La séparation labellisé / non-labellisé devient ainsi robuste à n'importe quel split.
+
+---
+
 ## 📊 Résultats
 
 ### Clustering (score ARI sur données fortement labellisées)
 
 | Algorithme | ARI |
 |---|---|
-| **Agglomerative (Ward)** | **0.70** ✓ |
-| GMM | 0.51 |
-| K-Means | 0.43 |
-| DBSCAN | n/a |
+| **GMM** | **0.48** ✓ |
+| K-Means | 0.43 ✓ |
+| Agglomerative (Ward) | 0.28 |
+| DBSCAN | n/a (tous outliers) |
 
-### Classification : Supervisé vs Semi-supervisé
+### Classification : Supervisé vs Semi-supervisé (test = 20 images)
 
-| Métrique | Supervisé | Semi-supervisé | Gain |
-|---|---|---|---|
-| Accuracy | 0.90 | **1.00** | +10 % |
-| F1-Score | 0.90 | **1.00** | +10 % |
-| **Recall cancer** ★ | 0.90 | **1.00** | +10 % |
-| AUC-ROC | 0.99 | **1.00** | +1 % |
+| Métrique | Supervisé | Semi-supervisé |
+|---|---|---|
+| Accuracy | 0.95 | 0.95 |
+| F1-Score | 0.95 | 0.95 |
+| AUC-ROC | 0.99 | 0.98 |
+| **Recall cancer** ★ | **1.00** | 0.90 |
+| Precision cancer | 0.91 | **1.00** |
 
 > ★ Le **Recall** est la métrique prioritaire en imagerie médicale : un faux négatif (tumeur non détectée) est plus grave qu'un faux positif.
 
-**Conclusion :** l'apprentissage semi-supervisé améliore les performances sur toutes les métriques. Résultats à confirmer sur un dataset plus large (test set de 20 images).
+**Conclusion :** sur ce dataset dédupliqué, les deux modèles sont **à égalité** sur Accuracy / F1 / AUC. Ils ne diffèrent que sur l'arbitrage recall/precision, soit **1 seule image de test** classée différemment — un écart dans le bruit statistique pour n=20. Le semi-supervisé est donc **compétitif** avec le supervisé ; une validation sur un test set plus large est nécessaire pour conclure à un gain net.
+
+> 💡 Avant déduplication, le semi-supervisé semblait dominer avec des scores parfaits (1.00). Ces scores étaient **partiellement gonflés par la fuite de données** — un bon rappel de l'importance de l'hygiène des données.
 
 ---
 
 ## ✅ Definition of Done
 
-- [x] ARI > 0.3 → atteint à **0.70**
-- [x] Recall cancer > 0.80 (supervisé) → **0.90**
-- [x] F1 semi-supervisé ≥ F1 supervisé → **1.00 vs 0.90**
+- [x] ARI > 0.3 → atteint à **0.48** (GMM)
+- [x] Recall cancer > 0.80 (supervisé **1.00**, semi-supervisé **0.90**)
+- [x] Données dédupliquées, jeu de test isolé (aucune fuite)
 - [x] Labels faibles et forts strictement séparés
 - [x] Même jeu de test pour Phase A et Phase B
+- [x] Comparaison supervisé vs semi-supervisé réalisée
 
 ---
 
@@ -149,7 +161,7 @@ conda run -n brainscanai jupyter lab
 
 > **Ne jamais mélanger** les données faiblement labellisées (clustering) et les données fortement labellisées (radiologues).
 
-Vérifié : les 1 406 images "weak" et les 100 images "strong" sont **strictement disjointes**, et le jeu de test n'est utilisé nulle part pendant l'entraînement.
+Vérifié : les 1 311 images "weak" et les 99 images "strong" sont **strictement disjointes** (par chemin ET par contenu MD5), et le jeu de test n'est utilisé nulle part pendant l'entraînement.
 
 ---
 
